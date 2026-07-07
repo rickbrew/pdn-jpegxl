@@ -58,6 +58,15 @@ typedef void(__stdcall* DecoderSetBasicInfo)(
     bool hasTransparency);
 typedef bool(__stdcall* DecoderSetMetadata)(uint8_t* data, size_t length);
 typedef bool(__stdcall* DecoderSetKnownColorProfile)(KnownColorProfile profile);
+// Reports the image's color information as CICP code points (ITU-T H.273), plus the HDR intensity target
+// (the peak luminance in nits, from JxlBasicInfo.intensity_target). Used for RGB color encodings that map to
+// a CICP color space; gray and non-mappable encodings use setKnownColorProfile / setIccProfile instead.
+typedef bool(__stdcall* DecoderSetCicpColorInfo)(
+    uint8_t colorPrimaries,
+    uint8_t transferCharacteristics,
+    uint8_t matrixCoefficients,
+    uint8_t videoFullRangeFlag,
+    float intensityTargetNits);
 typedef bool(__stdcall* DecoderSetLayerData)(uint8_t* pixels, char* name, size_t nameLength);
 
 struct DecoderCallbacks
@@ -65,6 +74,7 @@ struct DecoderCallbacks
     DecoderSetBasicInfo setBasicInfo;
     DecoderSetMetadata setIccProfile;
     DecoderSetKnownColorProfile setKnownColorProfile;
+    DecoderSetCicpColorInfo setCicpColorInfo;
     DecoderSetMetadata setExif;
     DecoderSetMetadata setXmp;
     DecoderSetLayerData setLayerData;

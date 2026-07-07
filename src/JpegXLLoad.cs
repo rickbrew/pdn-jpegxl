@@ -38,37 +38,62 @@ namespace JpegXLFileTypePlugin
                 IColorContext? documentColorContext;
                 IBitmapSource bitmapLayerSource;
                 bool isHdrDocument = false;
-                if (decoderImage.ColorSpace == JpegXLColorSpace.Rgb && decoderImage.HdrFormat == HdrFormat.PQ)
+                float? contentMaxLuminanceNits = null;
+
+                CicpColorSpace? cicpColorSpace = decoderImage.CicpColorSpace;
+                bool isHdrTransfer = cicpColorSpace.HasValue
+                    && cicpColorSpace.Value.TransferCharacteristics
+                        is CicpTransferCharacteristics.SmpteSt2084PQ
+                        or CicpTransferCharacteristics.AribStdB67Hlg;
+
+                if (isHdrTransfer)
                 {
+                    CicpColorSpace cicp = cicpColorSpace!.Value;
+
                     if (decoderImage.ChannelRepresentation == JpegXLImageChannelRepresentation.Uint8)
                     {
-                        throw new FormatException("PQ HDR images with 8-bit color channels are not supported.");
+                        throw new FormatException("HDR images with 8-bit color channels are not supported.");
                     }
 
-                    // Decode the BT.2020 PQ content to linear-light HDR and keep it as an HDR document, instead of
+                    // Decode the HDR (PQ/HLG) content to linear-light and keep it as an HDR document, instead of
                     // flattening it to SDR at load. The output is tagged with the linearized form of the gamut-
-                    // appropriate working space (BT.2020 -> BT.2020 linear), and the document is flagged as HDR so
-                    // Paint.NET tone-maps it when displaying or exporting to SDR.
-                    CicpColorSpace cicpColorSpace = new(CicpColorPrimaries.Bt2020,
-                                                        CicpTransferCharacteristics.SmpteSt2084PQ,
-                                                        CicpMatrixCoefficients.Identity,
-                                                        CicpVideoFullRangeFlag.Full);
-
-                    using IColorContext recommendedColorContext = imagingFactory.CreateColorContext(cicpColorSpace.RecommendedColorSpace);
+                    // appropriate working space (e.g. BT.2020 -> BT.2020 linear), and the document is flagged as
+                    // HDR so Paint.NET tone-maps it when displaying or exporting to SDR.
+                    using IColorContext recommendedColorContext = imagingFactory.CreateColorContext(cicp.RecommendedColorSpace);
                     documentColorContext = imagingFactory.CreateLinearizedColorContextOrScRgb(recommendedColorContext);
 
-                    bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer<ColorRgba128Float>(cicpColorSpace, documentColorContext);
+                    bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer<ColorRgba128Float>(cicp, documentColorContext);
                     isHdrDocument = true;
+
+                    // The JPEG XL intensity target is the peak content luminance (like an AVIF MaxCLL). Use it as
+                    // the content light level when it is a specific HDR value; the PQ default of 10000 nits (the
+                    // container maximum, not the actual content peak) is treated as unknown so Paint.NET measures
+                    // the peak itself.
+                    float intensityTarget = decoderImage.IntensityTargetNits;
+                    if (intensityTarget > 0.0f && intensityTarget < 10000.0f)
+                    {
+                        contentMaxLuminanceNits = intensityTarget;
+                    }
+                }
+                else if (cicpColorSpace.HasValue
+                    && cicpColorSpace.Value.CanCreateColorContext
+                    && factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
+                {
+                    // SDR CICP: the pixels are already in this color space, so just tag them with a matching
+                    // color context synthesized from the CICP code points.
+                    documentColorContext = imagingFactory.CreateColorContext(cicpColorSpace.Value);
+                    bitmapLayerSource = decoderLayerBitmap.CreateRef();
                 }
                 else if (factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
                 {
-                    // This covers RGB, CMYK, and Gray (already converted to RGB by DecoderLayerData)
+                    // Gray (KnownColorProfile), an embedded ICC profile, or an untagged image: use whatever
+                    // color context the decoder produced. This also covers CMYK (converted to RGB earlier).
                     documentColorContext = decoderImage.TryGetColorContext();
                     bitmapLayerSource = decoderLayerBitmap.CreateRef();
                 }
                 else
                 {
-                    throw new FormatException($"Unsupported format: {decoderImage.ColorSpace}, {decoderImage.ChannelRepresentation}, {decoderImage.HdrFormat}");
+                    throw new FormatException($"Unsupported format: {decoderImage.ColorSpace}, {decoderImage.ChannelRepresentation}");
                 }
 
                 IFileTypeDocument document = factory.CreateDocument(bitmapLayerSource.Size, bitmapLayerSource.PixelFormat);
@@ -99,9 +124,10 @@ namespace JpegXLFileTypePlugin
                     {
                         hdrTx.IsHdrDocument = true;
 
-                        // ContentMaxLuminanceNits is left null: the JPEG XL intensity_target is not yet plumbed
-                        // through the native decoder, so Paint.NET measures the content peak itself when tone-
-                        // mapping. SceneReferredSdrWhiteLevelNits keeps its default (80 nits).
+                        // From the JPEG XL intensity target, when it was a specific value; otherwise null so
+                        // Paint.NET measures the content peak itself. SceneReferredSdrWhiteLevelNits keeps its
+                        // default (80 nits).
+                        hdrTx.ContentMaxLuminanceNits = contentMaxLuminanceNits;
                     }
                 }
 

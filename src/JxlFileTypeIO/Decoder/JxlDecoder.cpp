@@ -33,60 +33,117 @@ namespace
             : SetProfileFromEncodingStatus::Error;
     }
 
+    SetProfileFromEncodingStatus SetCicpColorInfoFromEncoding(
+        DecoderCallbacks* callbacks,
+        uint8_t colorPrimaries,
+        uint8_t transferCharacteristics,
+        float intensityTarget)
+    {
+        // JPEG XL decodes to full-range RGB, so the matrix coefficients are always Identity (0) and the
+        // video full range flag is always Full (1).
+        constexpr uint8_t CicpMatrixIdentity = 0;
+        constexpr uint8_t CicpFullRange = 1;
+
+        return callbacks->setCicpColorInfo(
+            colorPrimaries,
+            transferCharacteristics,
+            CicpMatrixIdentity,
+            CicpFullRange,
+            intensityTarget)
+            ? SetProfileFromEncodingStatus::Ok
+            : SetProfileFromEncodingStatus::Error;
+    }
+
+    // Maps the image's JPEG XL color encoding to a color profile for the managed layer. RGB encodings that
+    // can be described by ITU-T H.273 code points are reported as CICP (which also carries the HDR intensity
+    // target and covers PQ and HLG); gray encodings use the KnownColorProfile path; anything else is reported
+    // as UnsupportedColorEncoding so the caller falls back to the embedded ICC profile.
     SetProfileFromEncodingStatus SetProfileFromColorEncoding(
         DecoderCallbacks* callbacks,
-        const JxlColorEncoding& colorEncoding)
+        const JxlColorEncoding& colorEncoding,
+        float intensityTarget)
     {
-        SetProfileFromEncodingStatus status = SetProfileFromEncodingStatus::UnsupportedColorEncoding;
+        // CICP code points (ITU-T H.273).
+        constexpr uint8_t CicpPrimariesBt709 = 1;
+        constexpr uint8_t CicpPrimariesBt2020 = 9;
+        constexpr uint8_t CicpPrimariesSmpte431 = 11; // DCI-P3 (DCI white point)
+        constexpr uint8_t CicpPrimariesSmpte432 = 12; // Display P3 (D65 white point)
+        constexpr uint8_t CicpTransferBt709 = 1;
+        constexpr uint8_t CicpTransferLinear = 8;
+        constexpr uint8_t CicpTransferSrgb = 13;
+        constexpr uint8_t CicpTransferPq = 16;
+        constexpr uint8_t CicpTransferHlg = 18;
 
         if (colorEncoding.color_space == JXL_COLOR_SPACE_RGB)
         {
-            if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
+            uint8_t colorPrimaries = 0;
+            bool primariesMapped = false;
+            switch (colorEncoding.primaries)
             {
-                if (colorEncoding.transfer_function == JXL_TRANSFER_FUNCTION_LINEAR)
+            case JXL_PRIMARIES_SRGB:
+                // SRGB and Rec. 709 share the same primaries.
+                if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
                 {
-                    if (colorEncoding.primaries == JXL_PRIMARIES_SRGB)
-                    {
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::LinearSrgb);
-                    }
-                    else if (colorEncoding.primaries == JXL_PRIMARIES_2100)
-                    {
-                        // Rec. 2020 and Rec. 2100 use the same primaries.
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::Rec2020Linear);
-                    }
+                    colorPrimaries = CicpPrimariesBt709;
+                    primariesMapped = true;
                 }
-                else if (colorEncoding.transfer_function == JXL_TRANSFER_FUNCTION_SRGB)
+                break;
+            case JXL_PRIMARIES_2100:
+                // Rec. 2020 and Rec. 2100 share the same primaries.
+                if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
                 {
-                    if (colorEncoding.primaries == JXL_PRIMARIES_SRGB)
-                    {
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::Srgb);
-                    }
-                    else if (colorEncoding.primaries == JXL_PRIMARIES_P3)
-                    {
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::DisplayP3);
-                    }
+                    colorPrimaries = CicpPrimariesBt2020;
+                    primariesMapped = true;
                 }
-                else if (colorEncoding.transfer_function == JXL_TRANSFER_FUNCTION_709)
+                break;
+            case JXL_PRIMARIES_P3:
+                if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
                 {
-                    // SRGB and Rec. 709 use the same primaries.
-                    if (colorEncoding.primaries == JXL_PRIMARIES_SRGB)
-                    {
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::Rec709);
-                    }
+                    colorPrimaries = CicpPrimariesSmpte432;
+                    primariesMapped = true;
                 }
-                else if (colorEncoding.primaries == JXL_PRIMARIES_2100)
+                else if (colorEncoding.white_point == JXL_WHITE_POINT_DCI)
                 {
-                    switch (colorEncoding.transfer_function)
-                    {
-                    case JXL_TRANSFER_FUNCTION_LINEAR:
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::Rec2020Linear);
-                        break;
-                    case JXL_TRANSFER_FUNCTION_PQ:
-                        status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::Rec2020PQ);
-                        break;
-                    }
+                    colorPrimaries = CicpPrimariesSmpte431;
+                    primariesMapped = true;
                 }
+                break;
+            default:
+                // Custom or unknown primaries have no suitable CICP code point.
+                break;
             }
+
+            uint8_t transferCharacteristics = 0;
+            bool transferMapped = true;
+            switch (colorEncoding.transfer_function)
+            {
+            case JXL_TRANSFER_FUNCTION_709:
+                transferCharacteristics = CicpTransferBt709;
+                break;
+            case JXL_TRANSFER_FUNCTION_LINEAR:
+                transferCharacteristics = CicpTransferLinear;
+                break;
+            case JXL_TRANSFER_FUNCTION_SRGB:
+                transferCharacteristics = CicpTransferSrgb;
+                break;
+            case JXL_TRANSFER_FUNCTION_PQ:
+                transferCharacteristics = CicpTransferPq;
+                break;
+            case JXL_TRANSFER_FUNCTION_HLG:
+                transferCharacteristics = CicpTransferHlg;
+                break;
+            default:
+                // DCI, custom gamma, and unknown transfer functions have no suitable CICP code point.
+                transferMapped = false;
+                break;
+            }
+
+            if (primariesMapped && transferMapped)
+            {
+                return SetCicpColorInfoFromEncoding(callbacks, colorPrimaries, transferCharacteristics, intensityTarget);
+            }
+
+            return SetProfileFromEncodingStatus::UnsupportedColorEncoding;
         }
         else if (colorEncoding.color_space == JXL_COLOR_SPACE_GRAY)
         {
@@ -95,16 +152,14 @@ namespace
                 switch (colorEncoding.transfer_function)
                 {
                 case JXL_TRANSFER_FUNCTION_LINEAR:
-                    status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::LinearGray);
-                    break;
+                    return SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::LinearGray);
                 case JXL_TRANSFER_FUNCTION_SRGB:
-                    status = SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::GraySrgbTRC);
-                    break;
+                    return SetKnownColorProfileFromEncoding(callbacks, KnownColorProfile::GraySrgbTRC);
                 }
             }
         }
 
-        return status;
+        return SetProfileFromEncodingStatus::UnsupportedColorEncoding;
     }
 
     bool ExtraChannelsAreSupported(
@@ -716,7 +771,7 @@ namespace
                     JXL_COLOR_PROFILE_TARGET_DATA,
                     &colorEncoding) == JXL_DEC_SUCCESS)
                 {
-                    encodedProfileStatus = SetProfileFromColorEncoding(callbacks, colorEncoding);
+                    encodedProfileStatus = SetProfileFromColorEncoding(callbacks, colorEncoding, context.GetBasicInfo().intensity_target);
 
                     if (encodedProfileStatus == SetProfileFromEncodingStatus::Error)
                     {
