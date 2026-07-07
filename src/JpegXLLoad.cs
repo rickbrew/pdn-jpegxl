@@ -13,9 +13,6 @@
 using JpegXLFileTypePlugin.Exif;
 using JpegXLFileTypePlugin.Interop;
 using PaintDotNet;
-using PaintDotNet.Direct2D1;
-using PaintDotNet.Direct2D1.Effects;
-using PaintDotNet.Dxgi;
 using PaintDotNet.FileTypes;
 using PaintDotNet.Imaging;
 using System;
@@ -40,6 +37,7 @@ namespace JpegXLFileTypePlugin
 
                 IColorContext? documentColorContext;
                 IBitmapSource bitmapLayerSource;
+                bool isHdrDocument = false;
                 if (decoderImage.ColorSpace == JpegXLColorSpace.Rgb && decoderImage.HdrFormat == HdrFormat.PQ)
                 {
                     if (decoderImage.ChannelRepresentation == JpegXLImageChannelRepresentation.Uint8)
@@ -47,14 +45,20 @@ namespace JpegXLFileTypePlugin
                         throw new FormatException("PQ HDR images with 8-bit color channels are not supported.");
                     }
 
-                    // For UINT16, use Display P3 since it has a similar gamut to the PQ color space and is designed for HDR content.
-                    // For Float16/Float32, use scRGB and let PDN figure out the best way to handle it. It may convert to Display P3
-                    // (e.g. v5.2 only supports BGRA32 SDR), or do something else that's appropriate.
-                    documentColorContext = (decoderImage.ChannelRepresentation == JpegXLImageChannelRepresentation.Uint16)
-                        ? imagingFactory.CreateColorContext(KnownColorSpace.DisplayP3)
-                        : imagingFactory.CreateColorContext(KnownColorSpace.ScRgb);
+                    // Decode the BT.2020 PQ content to linear-light HDR and keep it as an HDR document, instead of
+                    // flattening it to SDR at load. The output is tagged with the linearized form of the gamut-
+                    // appropriate working space (BT.2020 -> BT.2020 linear), and the document is flagged as HDR so
+                    // Paint.NET tone-maps it when displaying or exporting to SDR.
+                    CicpColorSpace cicpColorSpace = new(CicpColorPrimaries.Bt2020,
+                                                        CicpTransferCharacteristics.SmpteSt2084PQ,
+                                                        CicpMatrixCoefficients.Identity,
+                                                        CicpVideoFullRangeFlag.Full);
 
-                    bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer(DxgiColorSpace.RgbFullGamma2084NoneP2020, documentColorContext, decoderLayerBitmap.PixelFormat);
+                    using IColorContext recommendedColorContext = imagingFactory.CreateColorContext(cicpColorSpace.RecommendedColorSpace);
+                    documentColorContext = imagingFactory.CreateLinearizedColorContextOrScRgb(recommendedColorContext);
+
+                    bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer<ColorRgba128Float>(cicpColorSpace, documentColorContext);
+                    isHdrDocument = true;
                 }
                 else if (factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
                 {
@@ -87,6 +91,18 @@ namespace JpegXLFileTypePlugin
                 if (documentColorContext is not null)
                 {
                     document.SetColorContext(documentColorContext);
+                }
+
+                if (isHdrDocument)
+                {
+                    using (var hdrTx = document.Metadata.Hdr.CreateTransaction())
+                    {
+                        hdrTx.IsHdrDocument = true;
+
+                        // ContentMaxLuminanceNits is left null: the JPEG XL intensity_target is not yet plumbed
+                        // through the native decoder, so Paint.NET measures the content peak itself when tone-
+                        // mapping. SceneReferredSdrWhiteLevelNits keeps its default (80 nits).
+                    }
                 }
 
                 using IFileTypeBitmapLayer bitmapLayer = document.CreateBitmapLayer();
