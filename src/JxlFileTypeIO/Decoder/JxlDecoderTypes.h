@@ -38,16 +38,12 @@ enum class DecoderImageFormat : int32_t
     Cmyk
 };
 
+// RGB color encodings are reported via setCicpColorInfo; only the two gray encodings use this enum. (Gray
+// images are loaded as RGB because WIC has poor gray-to-RGB support.)
 enum class KnownColorProfile : int32_t
 {
-    Srgb = 0,
-    LinearSrgb,
-    LinearGray,
+    LinearGray = 0,
     GraySrgbTRC,
-    DisplayP3,
-    Rec709,
-    Rec2020Linear,
-    Rec2020PQ,
 };
 
 typedef void(__stdcall* DecoderSetBasicInfo)(
