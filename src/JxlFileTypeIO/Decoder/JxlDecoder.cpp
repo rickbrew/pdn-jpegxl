@@ -39,16 +39,13 @@ namespace
         uint8_t transferCharacteristics,
         float intensityTarget)
     {
-        // JPEG XL decodes to full-range RGB, so the matrix coefficients are always Identity (0) and the
-        // video full range flag is always Full (1).
-        constexpr uint8_t CicpMatrixIdentity = 0;
-        constexpr uint8_t CicpFullRange = 1;
-
+        // JPEG XL decodes to full-range RGB, so the matrix coefficients are always Identity and the
+        // video full range flag is always Full.
         return callbacks->setCicpColorInfo(
             colorPrimaries,
             transferCharacteristics,
-            CicpMatrixIdentity,
-            CicpFullRange,
+            static_cast<uint8_t>(CicpMatrixCoefficients::Identity),
+            static_cast<uint8_t>(CicpVideoFullRangeFlag::Full),
             intensityTarget)
             ? SetProfileFromEncodingStatus::Ok
             : SetProfileFromEncodingStatus::Error;
@@ -63,20 +60,9 @@ namespace
         const JxlColorEncoding& colorEncoding,
         float intensityTarget)
     {
-        // CICP code points (ITU-T H.273).
-        constexpr uint8_t CicpPrimariesBt709 = 1;
-        constexpr uint8_t CicpPrimariesBt2020 = 9;
-        constexpr uint8_t CicpPrimariesSmpte431 = 11; // DCI-P3 (DCI white point)
-        constexpr uint8_t CicpPrimariesSmpte432 = 12; // Display P3 (D65 white point)
-        constexpr uint8_t CicpTransferBt709 = 1;
-        constexpr uint8_t CicpTransferLinear = 8;
-        constexpr uint8_t CicpTransferSrgb = 13;
-        constexpr uint8_t CicpTransferPq = 16;
-        constexpr uint8_t CicpTransferHlg = 18;
-
         if (colorEncoding.color_space == JXL_COLOR_SPACE_RGB)
         {
-            uint8_t colorPrimaries = 0;
+            CicpColorPrimaries colorPrimaries = {};
             bool primariesMapped = false;
             switch (colorEncoding.primaries)
             {
@@ -84,7 +70,7 @@ namespace
                 // SRGB and Rec. 709 share the same primaries.
                 if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
                 {
-                    colorPrimaries = CicpPrimariesBt709;
+                    colorPrimaries = CicpColorPrimaries::Bt709;
                     primariesMapped = true;
                 }
                 break;
@@ -92,19 +78,19 @@ namespace
                 // Rec. 2020 and Rec. 2100 share the same primaries.
                 if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
                 {
-                    colorPrimaries = CicpPrimariesBt2020;
+                    colorPrimaries = CicpColorPrimaries::Bt2020;
                     primariesMapped = true;
                 }
                 break;
             case JXL_PRIMARIES_P3:
                 if (colorEncoding.white_point == JXL_WHITE_POINT_D65)
                 {
-                    colorPrimaries = CicpPrimariesSmpte432;
+                    colorPrimaries = CicpColorPrimaries::Smpte432;
                     primariesMapped = true;
                 }
                 else if (colorEncoding.white_point == JXL_WHITE_POINT_DCI)
                 {
-                    colorPrimaries = CicpPrimariesSmpte431;
+                    colorPrimaries = CicpColorPrimaries::Smpte431;
                     primariesMapped = true;
                 }
                 break;
@@ -113,24 +99,24 @@ namespace
                 break;
             }
 
-            uint8_t transferCharacteristics = 0;
+            CicpTransferCharacteristics transferCharacteristics = {};
             bool transferMapped = true;
             switch (colorEncoding.transfer_function)
             {
             case JXL_TRANSFER_FUNCTION_709:
-                transferCharacteristics = CicpTransferBt709;
+                transferCharacteristics = CicpTransferCharacteristics::Bt709;
                 break;
             case JXL_TRANSFER_FUNCTION_LINEAR:
-                transferCharacteristics = CicpTransferLinear;
+                transferCharacteristics = CicpTransferCharacteristics::Linear;
                 break;
             case JXL_TRANSFER_FUNCTION_SRGB:
-                transferCharacteristics = CicpTransferSrgb;
+                transferCharacteristics = CicpTransferCharacteristics::Srgb;
                 break;
             case JXL_TRANSFER_FUNCTION_PQ:
-                transferCharacteristics = CicpTransferPq;
+                transferCharacteristics = CicpTransferCharacteristics::SmpteSt2084PQ;
                 break;
             case JXL_TRANSFER_FUNCTION_HLG:
-                transferCharacteristics = CicpTransferHlg;
+                transferCharacteristics = CicpTransferCharacteristics::AribStdB67Hlg;
                 break;
             default:
                 // DCI, custom gamma, and unknown transfer functions have no suitable CICP code point.
@@ -140,7 +126,11 @@ namespace
 
             if (primariesMapped && transferMapped)
             {
-                return SetCicpColorInfoFromEncoding(callbacks, colorPrimaries, transferCharacteristics, intensityTarget);
+                return SetCicpColorInfoFromEncoding(
+                    callbacks,
+                    static_cast<uint8_t>(colorPrimaries),
+                    static_cast<uint8_t>(transferCharacteristics),
+                    intensityTarget);
             }
 
             return SetProfileFromEncodingStatus::UnsupportedColorEncoding;

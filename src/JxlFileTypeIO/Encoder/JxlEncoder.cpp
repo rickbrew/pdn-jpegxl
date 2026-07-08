@@ -30,6 +30,61 @@ namespace
         Rgba
     };
 
+    // Builds an enumerated JxlColorEncoding from CICP code points (ITU-T H.273). Returns false if the primaries
+    // or transfer characteristics have no JPEG XL equivalent, in which case the caller falls back to an ICC
+    // profile or sRGB. JPEG XL decodes to full-range RGB, so the CICP matrix coefficients and video full range
+    // flag are implied and not consulted here.
+    bool BuildColorEncodingFromCicp(const EncoderImageMetadata* metadata, JxlColorEncoding& colorEncoding)
+    {
+        colorEncoding.color_space = JXL_COLOR_SPACE_RGB;
+        colorEncoding.rendering_intent = JXL_RENDERING_INTENT_RELATIVE;
+
+        switch (static_cast<CicpColorPrimaries>(metadata->cicpColorPrimaries))
+        {
+        case CicpColorPrimaries::Bt709:
+            colorEncoding.primaries = JXL_PRIMARIES_SRGB;
+            colorEncoding.white_point = JXL_WHITE_POINT_D65;
+            break;
+        case CicpColorPrimaries::Bt2020:
+            colorEncoding.primaries = JXL_PRIMARIES_2100;
+            colorEncoding.white_point = JXL_WHITE_POINT_D65;
+            break;
+        case CicpColorPrimaries::Smpte431:
+            colorEncoding.primaries = JXL_PRIMARIES_P3;
+            colorEncoding.white_point = JXL_WHITE_POINT_DCI;
+            break;
+        case CicpColorPrimaries::Smpte432:
+            colorEncoding.primaries = JXL_PRIMARIES_P3;
+            colorEncoding.white_point = JXL_WHITE_POINT_D65;
+            break;
+        default:
+            return false;
+        }
+
+        switch (static_cast<CicpTransferCharacteristics>(metadata->cicpTransferCharacteristics))
+        {
+        case CicpTransferCharacteristics::Bt709:
+            colorEncoding.transfer_function = JXL_TRANSFER_FUNCTION_709;
+            break;
+        case CicpTransferCharacteristics::Linear:
+            colorEncoding.transfer_function = JXL_TRANSFER_FUNCTION_LINEAR;
+            break;
+        case CicpTransferCharacteristics::Srgb:
+            colorEncoding.transfer_function = JXL_TRANSFER_FUNCTION_SRGB;
+            break;
+        case CicpTransferCharacteristics::SmpteSt2084PQ:
+            colorEncoding.transfer_function = JXL_TRANSFER_FUNCTION_PQ;
+            break;
+        case CicpTransferCharacteristics::AribStdB67Hlg:
+            colorEncoding.transfer_function = JXL_TRANSFER_FUNCTION_HLG;
+            break;
+        default:
+            return false;
+        }
+
+        return true;
+    }
+
     OutputPixelFormat GetOutputPixelFormat(const BitmapData* bitmap, bool hasICCProfile)
     {
         bool isGray = true;
@@ -255,7 +310,16 @@ EncoderStatus EncoderWriteImage(
             return EncoderStatus::UserCanceled;
         }
 
-        if (metadata->iccProfileSize > 0)
+        JxlColorEncoding cicpColorEncoding{};
+        if (metadata->hasCicpColorInfo && BuildColorEncodingFromCicp(metadata, cicpColorEncoding))
+        {
+            if (JxlEncoderSetColorEncoding(enc.get(), &cicpColorEncoding) != JXL_ENC_SUCCESS)
+            {
+                SetErrorMessage(errorInfo, "JxlEncoderSetColorEncoding failed.");
+                return EncoderStatus::EncodeError;
+            }
+        }
+        else if (metadata->iccProfileSize > 0)
         {
             if (JxlEncoderSetICCProfile(
                 enc.get(),
@@ -272,7 +336,12 @@ EncoderStatus EncoderWriteImage(
             bool isGray = outputPixelFormat == OutputPixelFormat::Gray || outputPixelFormat == OutputPixelFormat::GrayAlpha;
 
             JxlColorEncodingSetToSRGB(&colorEncoding, isGray);
-            colorEncoding.rendering_intent = JXL_RENDERING_INTENT_PERCEPTUAL;
+            // Use the relative colorimetric intent to match the JPEG XL reference encoder (cjxl), which always
+            // tags enumerated color spaces this way -- including sRGB -- and even rewrites a source profile's
+            // perceptual intent to relative. The intent is largely moot for sRGB anyway (virtually every display
+            // covers the gamut, so no gamut mapping occurs), but this keeps our output consistent with cjxl and
+            // with the relative intent already used by the CICP path above.
+            colorEncoding.rendering_intent = JXL_RENDERING_INTENT_RELATIVE;
 
             if (JxlEncoderSetColorEncoding(enc.get(), &colorEncoding) != JXL_ENC_SUCCESS)
             {

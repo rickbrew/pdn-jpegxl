@@ -31,11 +31,22 @@ namespace JpegXLFileTypePlugin.Interop
                 public nuint iccProfileSize;
                 public void* xmp;
                 public nuint xmpSize;
+                public byte hasCicpColorInfo;
+                public byte cicpColorPrimaries;
+                public byte cicpTransferCharacteristics;
+                public byte cicpMatrixCoefficients;
+                public byte cicpVideoFullRangeFlag;
             }
 
             public static Native ConvertToUnmanaged(EncoderImageMetadata managed)
             {
                 Native native = new();
+
+                native.hasCicpColorInfo = managed.hasCicpColorInfo ? (byte)1 : (byte)0;
+                native.cicpColorPrimaries = managed.cicpColorPrimaries;
+                native.cicpTransferCharacteristics = managed.cicpTransferCharacteristics;
+                native.cicpMatrixCoefficients = managed.cicpMatrixCoefficients;
+                native.cicpVideoFullRangeFlag = managed.cicpVideoFullRangeFlag;
 
                 if (managed.iccProfile.Length > 0)
                 {

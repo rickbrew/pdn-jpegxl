@@ -32,7 +32,8 @@ namespace JpegXLFileTypePlugin
                                        ProgressEventHandler progressEventHandler,
                                        int quality,
                                        bool lossless,
-                                       int effort)
+                                       int effort,
+                                       IImagingFactory imagingFactory)
         {
             // TODO: support more pixel formats
             using IFileTypeCompositeBitmap<ColorBgra32> compositeBitmap = input.GetCompositeBitmap<ColorBgra32>();
@@ -57,16 +58,17 @@ namespace JpegXLFileTypePlugin
             }
 
             EncoderOptions options = new(quality, lossless, effort);
-            EncoderImageMetadata metadata = CreateImageMetadata(input);
+            EncoderImageMetadata metadata = CreateImageMetadata(input, imagingFactory);
 
             JpegXLNative.SaveImage(compositeLock.AsRegionPtr(), options, metadata, progressCallback, output);
         }
 
-        private static EncoderImageMetadata CreateImageMetadata(IReadOnlyFileTypeDocument input)
+        private static EncoderImageMetadata CreateImageMetadata(IReadOnlyFileTypeDocument input, IImagingFactory imagingFactory)
         {
             byte[]? exifBytes = null;
             byte[]? iccProfileBytes = null;
             byte[]? xmpBytes = null;
+            CicpColorSpace? cicpColorSpace = null;
 
             ExifColorSpace exifColorSpace = ExifColorSpace.Srgb;
 
@@ -74,17 +76,43 @@ namespace JpegXLFileTypePlugin
 
             if (colorContext != null)
             {
-                // We do not set an ICC profile for sRGB images as JpegXL can signal that
-                // using its built-in color space encoding, and sRGB is the default for
-                // images without an ICC profile.
-                if (colorContext.Type != ColorContextType.ExifColorSpace
-                    || colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
+                // Prefer compact CICP code points, but only when they reproduce the color context exactly:
+                // build a color context back from the CICP and require it to compare equal to the original.
+                // This keeps standard wide-gamut / HDR spaces losslessly tagged while preserving the exact ICC
+                // profile for anything that does not round-trip (e.g. Adobe RGB, or an off-standard variant of
+                // a standard space, where writing CICP could shift some pixels).
+                if (colorContext.TryGetCicpColorSpace(out CicpColorSpace cicp) && 
+                    IsNativeExpressible(cicp))
                 {
-                    iccProfileBytes = colorContext.GetProfileBytes().ToArray();
+                    using IColorContext roundTrippedColorContext = imagingFactory.CreateColorContext(cicp);
 
-                    if (iccProfileBytes.Length > 0)
+                    if (colorContext.Equals(roundTrippedColorContext))
                     {
-                        exifColorSpace = ExifColorSpace.Uncalibrated;
+                        cicpColorSpace = cicp;
+
+                        // The EXIF color space tag is only sRGB when the color space is sRGB.
+                        if (cicp.ColorPrimaries != CicpColorPrimaries.Bt709 || 
+                            cicp.TransferCharacteristics != CicpTransferCharacteristics.Srgb)
+                        {
+                            exifColorSpace = ExifColorSpace.Uncalibrated;
+                        }
+                    }
+                }
+
+                if (cicpColorSpace is null)
+                {
+                    // We do not set an ICC profile for sRGB images as JpegXL can signal that
+                    // using its built-in color space encoding, and sRGB is the default for
+                    // images without an ICC profile.
+                    if (colorContext.Type != ColorContextType.ExifColorSpace || 
+                        colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
+                    {
+                        iccProfileBytes = colorContext.GetProfileBytes().ToArray();
+
+                        if (iccProfileBytes.Length > 0)
+                        {
+                            exifColorSpace = ExifColorSpace.Uncalibrated;
+                        }
                     }
                 }
             }
@@ -95,10 +123,10 @@ namespace JpegXLFileTypePlugin
             {
                 propertyItems.Remove(ExifPropertyKeys.Image.InterColorProfile.Path);
 
-                if (iccProfileBytes != null)
+                if (exifColorSpace == ExifColorSpace.Uncalibrated)
                 {
                     // Remove the InteroperabilityIndex and related tags, these tags should
-                    // not be written if the image has an ICC color profile.
+                    // not be written if the image has a non-sRGB color space (ICC or CICP).
                     propertyItems.Remove(ExifPropertyKeys.Interop.InteroperabilityIndex.Path);
                     propertyItems.Remove(ExifPropertyKeys.Interop.InteroperabilityVersion.Path);
                 }
@@ -115,7 +143,25 @@ namespace JpegXLFileTypePlugin
                 xmpBytes = Encoding.UTF8.GetBytes(xmpPacketAsString);
             }
 
-            return new EncoderImageMetadata(exifBytes, iccProfileBytes, xmpBytes);
+            return new EncoderImageMetadata(exifBytes, iccProfileBytes, xmpBytes, cicpColorSpace);
+        }
+
+        // Whether the native encoder can build a JxlColorEncoding for this CICP color space. Kept in sync with
+        // BuildColorEncodingFromCicp in the native JxlEncoder.
+        private static bool IsNativeExpressible(CicpColorSpace cicp)
+        {
+            bool primariesExpressible = cicp.ColorPrimaries is CicpColorPrimaries.Bt709
+                or CicpColorPrimaries.Bt2020
+                or CicpColorPrimaries.Smpte431
+                or CicpColorPrimaries.Smpte432;
+
+            bool transferExpressible = cicp.TransferCharacteristics is CicpTransferCharacteristics.Bt709
+                or CicpTransferCharacteristics.Linear
+                or CicpTransferCharacteristics.Srgb
+                or CicpTransferCharacteristics.SmpteSt2084PQ
+                or CicpTransferCharacteristics.AribStdB67Hlg;
+
+            return primariesExpressible && transferExpressible;
         }
 
         private static Dictionary<ExifPropertyPath, ExifValue>? GetExifMetadataFromDocument(IReadOnlyFileTypeDocument doc)
