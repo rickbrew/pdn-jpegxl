@@ -65,10 +65,10 @@ namespace JpegXLFileTypePlugin
                     bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer<ColorRgba128Float>(cicp, documentColorContext);
                     isHdrDocument = true;
 
-                    // The JPEG XL intensity target is the peak content luminance (like an AVIF MaxCLL). Use it as
-                    // the content light level when it is a specific HDR value; the PQ default of 10000 nits (the
-                    // container maximum, not the actual content peak) is treated as unknown so Paint.NET measures
-                    // the peak itself.
+                    // The JPEG XL intensity target is the peak content luminance (like an AVIF MaxCLL). Use it as the
+                    // content light level when it is a specific HDR value; the PQ default of 10000 nits (the container
+                    // maximum, not the actual content peak) is treated as unknown so that Paint.NET measures the peak
+                    // itself.
                     float intensityTarget = decoderImage.IntensityTargetNits;
                     if (intensityTarget > 0.0f && intensityTarget < 10000.0f)
                     {
