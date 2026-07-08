@@ -58,7 +58,7 @@ namespace JpegXLFileTypePlugin
                     // Decode the HDR (PQ/HLG) content to linear-light and keep it as an HDR document, instead of
                     // flattening it to SDR at load. The output is tagged with the linearized form of the gamut-
                     // appropriate working space (e.g. BT.2020 -> BT.2020 linear), and the document is flagged as
-                    // HDR so Paint.NET tone-maps it when displaying or exporting to SDR.
+                    // HDR so Paint.NET tone-maps it when importing as or exporting to SDR.
                     using IColorContext recommendedColorContext = imagingFactory.CreateColorContext(cicp.RecommendedColorSpace);
                     documentColorContext = imagingFactory.CreateLinearizedColorContextOrScRgb(recommendedColorContext);
 
@@ -75,9 +75,9 @@ namespace JpegXLFileTypePlugin
                         contentMaxLuminanceNits = intensityTarget;
                     }
                 }
-                else if (cicpColorSpace.HasValue
-                    && cicpColorSpace.Value.CanCreateColorContext
-                    && factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
+                else if (cicpColorSpace.HasValue && 
+                    cicpColorSpace.Value.CanCreateColorContext && 
+                    factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
                 {
                     // SDR CICP: the pixels are already in this color space, so just tag them with a matching
                     // color context synthesized from the CICP code points.
