@@ -75,8 +75,8 @@ namespace JpegXLFileTypePlugin
                         contentMaxLuminanceNits = intensityTarget;
                     }
                 }
-                else if (cicpColorSpace.HasValue && 
-                    cicpColorSpace.Value.CanCreateColorContext && 
+                else if (cicpColorSpace.HasValue &&
+                    cicpColorSpace.Value.CanCreateColorContext &&
                     factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
                 {
                     // SDR CICP: the pixels are already in this color space, so just tag them with a matching
