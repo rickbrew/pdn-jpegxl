@@ -78,10 +78,11 @@ namespace JpegXLFileTypePlugin
             {
                 // Prefer compact CICP code points, but only when they reproduce the color context exactly:
                 // build a color context back from the CICP and require it to compare equal to the original.
-                // This keeps standard wide-gamut / HDR spaces losslessly tagged while preserving the exact ICC
+                // This keeps standard wide-gamut spaces losslessly tagged while preserving the exact ICC
                 // profile for anything that does not round-trip (e.g. Adobe RGB, or an off-standard variant of
                 // a standard space, where writing CICP could shift some pixels).
-                if (colorContext.TryGetCicpColorSpace(out CicpColorSpace cicp) && 
+                if (colorContext.TryGetCicpColorSpace(out CicpColorSpace cicp) &&
+                    cicp.CanCreateColorContext &&
                     IsNativeExpressible(cicp))
                 {
                     using IColorContext roundTrippedColorContext = imagingFactory.CreateColorContext(cicp);
