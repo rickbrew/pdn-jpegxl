@@ -66,7 +66,7 @@ namespace JpegXLFileTypePlugin.Interop
         public CicpColorSpace? CicpColorSpace { get; private set; }
 
         // The HDR intensity target (peak luminance in nits) from JxlBasicInfo.intensity_target, meaningful
-        // only when CicpColorSpace is set. Zero if unknown.
+        // only when CicpColorSpace is set. Zero if CicpColorSpace was not set.
         public float IntensityTargetNits { get; private set; }
 
         public DecoderLayerData? LayerData => layerData;
