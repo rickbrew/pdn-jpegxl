@@ -41,14 +41,23 @@ namespace
     {
         // JPEG XL decodes to full-range RGB, so the matrix coefficients are always Identity and the
         // video full range flag is always Full.
-        return callbacks->setCicpColorInfo(
+        SetCicpColorInfoResult result = callbacks->setCicpColorInfo(
             colorPrimaries,
             transferCharacteristics,
             static_cast<uint8_t>(CicpMatrixCoefficients::Identity),
             static_cast<uint8_t>(CicpVideoFullRangeFlag::Full),
-            intensityTarget)
-            ? SetProfileFromEncodingStatus::Ok
-            : SetProfileFromEncodingStatus::Error;
+            intensityTarget);
+
+        switch (result)
+        {
+        case SetCicpColorInfoResult::Ok:
+            return SetProfileFromEncodingStatus::Ok;
+        case SetCicpColorInfoResult::Unsupported:
+            // The managed layer cannot represent these code points; fall back to the ICC profile.
+            return SetProfileFromEncodingStatus::UnsupportedColorEncoding;
+        default:
+            return SetProfileFromEncodingStatus::Error;
+        }
     }
 
     // Maps the image's JPEG XL color encoding to a color profile for the managed layer. RGB encodings that

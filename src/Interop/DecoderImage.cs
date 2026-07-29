@@ -166,7 +166,7 @@ namespace JpegXLFileTypePlugin.Interop
             return true;
         }
 
-        private bool SetCicpColorInfo(
+        private SetCicpColorInfoResult SetCicpColorInfo(
             byte colorPrimaries,
             byte transferCharacteristics,
             byte matrixCoefficients,
@@ -175,20 +175,30 @@ namespace JpegXLFileTypePlugin.Interop
         {
             try
             {
-                CicpColorSpace = new CicpColorSpace(
+                CicpColorSpace cicp = new(
                     (CicpColorPrimaries)colorPrimaries,
                     (CicpTransferCharacteristics)transferCharacteristics,
                     (CicpMatrixCoefficients)matrixCoefficients,
                     (CicpVideoFullRangeFlag)videoFullRangeFlag);
+
+                if (!cicp.CanCreateColorContext && !cicp.CanColorTransformFrom)
+                {
+                    // PDN can't work with this CICP color space. Have the native decoder send
+                    // the ICC profile instead; otherwise the image would be loaded with no
+                    // color context and treated as sRGB.
+                    return SetCicpColorInfoResult.Unsupported;
+                }
+
+                CicpColorSpace = cicp;
                 IntensityTargetNits = intensityTargetNits;
             }
             catch (Exception ex)
             {
                 ExceptionInfo = ExceptionDispatchInfo.Capture(ex);
-                return false;
+                return SetCicpColorInfoResult.Error;
             }
 
-            return true;
+            return SetCicpColorInfoResult.Ok;
         }
 
         private bool SetExif(byte* data, nuint dataLength)

@@ -30,8 +30,7 @@ namespace JpegXLFileTypePlugin.Interop
     internal unsafe delegate bool SetKnownColorProfileDelegate(KnownColorProfile profile);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    [return: MarshalAs(UnmanagedType.U1)]
-    internal unsafe delegate bool SetCicpColorInfoDelegate(
+    internal unsafe delegate SetCicpColorInfoResult SetCicpColorInfoDelegate(
         byte colorPrimaries,
         byte transferCharacteristics,
         byte matrixCoefficients,

@@ -46,6 +46,16 @@ enum class KnownColorProfile : int32_t
     GraySrgbTRC,
 };
 
+// The result of the setCicpColorInfo callback.
+// The values must stay in sync with the managed SetCicpColorInfoResult enum.
+enum class SetCicpColorInfoResult : int32_t
+{
+    Ok = 0,
+    // The managed layer cannot represent these code points; fall back to the ICC profile.
+    Unsupported,
+    Error,
+};
+
 typedef void(__stdcall* DecoderSetBasicInfo)(
     int32_t width,
     int32_t height,
@@ -57,7 +67,7 @@ typedef bool(__stdcall* DecoderSetKnownColorProfile)(KnownColorProfile profile);
 // Reports the image's color information as CICP code points (ITU-T H.273), plus the HDR intensity target
 // (the peak luminance in nits, from JxlBasicInfo.intensity_target). Used for RGB color encodings that map to
 // a CICP color space; gray and non-mappable encodings use setKnownColorProfile / setIccProfile instead.
-typedef bool(__stdcall* DecoderSetCicpColorInfo)(
+typedef SetCicpColorInfoResult(__stdcall* DecoderSetCicpColorInfo)(
     uint8_t colorPrimaries,
     uint8_t transferCharacteristics,
     uint8_t matrixCoefficients,
