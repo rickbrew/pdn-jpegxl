@@ -72,48 +72,45 @@ namespace JpegXLFileTypePlugin
 
             ExifColorSpace exifColorSpace = ExifColorSpace.Srgb;
 
-            IColorContext? colorContext = input.GetColorContext();
+            using IColorContext colorContext = input.GetColorContext();
 
-            if (colorContext != null)
+            // Prefer compact CICP code points, but only when they reproduce the color context exactly:
+            // build a color context back from the CICP and require it to compare equal to the original.
+            // This keeps standard wide-gamut spaces losslessly tagged while preserving the exact ICC
+            // profile for anything that does not round-trip (e.g. Adobe RGB, or an off-standard variant of
+            // a standard space, where writing CICP could shift some pixels).
+            if (colorContext.TryGetCicpColorSpace(out CicpColorSpace cicp) &&
+                cicp.CanCreateColorContext &&
+                IsNativeExpressible(cicp))
             {
-                // Prefer compact CICP code points, but only when they reproduce the color context exactly:
-                // build a color context back from the CICP and require it to compare equal to the original.
-                // This keeps standard wide-gamut spaces losslessly tagged while preserving the exact ICC
-                // profile for anything that does not round-trip (e.g. Adobe RGB, or an off-standard variant of
-                // a standard space, where writing CICP could shift some pixels).
-                if (colorContext.TryGetCicpColorSpace(out CicpColorSpace cicp) &&
-                    cicp.CanCreateColorContext &&
-                    IsNativeExpressible(cicp))
+                using IColorContext roundTrippedColorContext = imagingFactory.CreateColorContext(cicp);
+
+                if (colorContext.Equals(roundTrippedColorContext))
                 {
-                    using IColorContext roundTrippedColorContext = imagingFactory.CreateColorContext(cicp);
+                    cicpColorSpace = cicp;
 
-                    if (colorContext.Equals(roundTrippedColorContext))
+                    // The EXIF color space tag is only sRGB when the color space is sRGB.
+                    if (cicp.ColorPrimaries != CicpColorPrimaries.Bt709 || 
+                        cicp.TransferCharacteristics != CicpTransferCharacteristics.Srgb)
                     {
-                        cicpColorSpace = cicp;
-
-                        // The EXIF color space tag is only sRGB when the color space is sRGB.
-                        if (cicp.ColorPrimaries != CicpColorPrimaries.Bt709 || 
-                            cicp.TransferCharacteristics != CicpTransferCharacteristics.Srgb)
-                        {
-                            exifColorSpace = ExifColorSpace.Uncalibrated;
-                        }
+                        exifColorSpace = ExifColorSpace.Uncalibrated;
                     }
                 }
+            }
 
-                if (cicpColorSpace is null)
+            if (cicpColorSpace is null)
+            {
+                // We do not set an ICC profile for sRGB images as JpegXL can signal that
+                // using its built-in color space encoding, and sRGB is the default for
+                // images without an ICC profile.
+                if (colorContext.Type != ColorContextType.ExifColorSpace || 
+                    colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
                 {
-                    // We do not set an ICC profile for sRGB images as JpegXL can signal that
-                    // using its built-in color space encoding, and sRGB is the default for
-                    // images without an ICC profile.
-                    if (colorContext.Type != ColorContextType.ExifColorSpace || 
-                        colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
-                    {
-                        iccProfileBytes = colorContext.GetProfileBytes().ToArray();
+                    iccProfileBytes = colorContext.GetProfileBytes().ToArray();
 
-                        if (iccProfileBytes.Length > 0)
-                        {
-                            exifColorSpace = ExifColorSpace.Uncalibrated;
-                        }
+                    if (iccProfileBytes.Length > 0)
+                    {
+                        exifColorSpace = ExifColorSpace.Uncalibrated;
                     }
                 }
             }
