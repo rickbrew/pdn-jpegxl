@@ -164,7 +164,7 @@ namespace JpegXLFileTypePlugin
                 bool lossless = context.Options.GetProperty<BooleanProperty>(PropertyNames.Lossless)!.Value;
                 int effort = context.Options.GetProperty<Int32Property>(PropertyNames.Effort)!.Value;
 
-                JpegXLSave.Save(context.Document, context.Output, context.ProgressCallback, quality, lossless, effort, this.Services.GetService<IImagingFactory>()!);
+                JpegXLSave.Save(context.Document, context.Output, context.ProgressCallback, quality, lossless, effort);
             }
         }
     }

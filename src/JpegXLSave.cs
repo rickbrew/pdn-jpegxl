@@ -32,8 +32,7 @@ namespace JpegXLFileTypePlugin
                                        ProgressEventHandler progressEventHandler,
                                        int quality,
                                        bool lossless,
-                                       int effort,
-                                       IImagingFactory imagingFactory)
+                                       int effort)
         {
             // TODO: support more pixel formats
             using IFileTypeCompositeBitmap<ColorBgra32> compositeBitmap = input.GetCompositeBitmap<ColorBgra32>();
@@ -58,12 +57,12 @@ namespace JpegXLFileTypePlugin
             }
 
             EncoderOptions options = new(quality, lossless, effort);
-            EncoderImageMetadata metadata = CreateImageMetadata(input, imagingFactory);
+            EncoderImageMetadata metadata = CreateImageMetadata(input);
 
             JpegXLNative.SaveImage(compositeLock.AsRegionPtr(), options, metadata, progressCallback, output);
         }
 
-        private static EncoderImageMetadata CreateImageMetadata(IReadOnlyFileTypeDocument input, IImagingFactory imagingFactory)
+        private static EncoderImageMetadata CreateImageMetadata(IReadOnlyFileTypeDocument input)
         {
             byte[]? exifBytes = null;
             byte[]? iccProfileBytes = null;
@@ -74,27 +73,24 @@ namespace JpegXLFileTypePlugin
 
             using IColorContext colorContext = input.GetColorContext();
 
-            // Prefer compact CICP code points, but only when they reproduce the color context exactly:
-            // build a color context back from the CICP and require it to compare equal to the original.
+            // Prefer compact CICP code points, but only when they reproduce the color context exactly.
             // This keeps standard wide-gamut spaces losslessly tagged while preserving the exact ICC
             // profile for anything that does not round-trip (e.g. Adobe RGB, or an off-standard variant of
             // a standard space, where writing CICP could shift some pixels).
-            if (colorContext.TryGetCicpColorSpace(out CicpColorSpace cicp) &&
+            // CanCreateColorContext filters out code points that cannot be expressed as an ICC profile
+            // (PQ/HLG transfers, non-identity matrix, narrow range), which a profile's embedded cicp tag
+            // could otherwise carry through the exact match.
+            if (colorContext.TryGetCicpColorSpaceExact(out CicpColorSpace cicp) &&
                 cicp.CanCreateColorContext &&
                 IsNativeExpressible(cicp))
             {
-                using IColorContext roundTrippedColorContext = imagingFactory.CreateColorContext(cicp);
+                cicpColorSpace = cicp;
 
-                if (colorContext.Equals(roundTrippedColorContext))
+                // The EXIF color space tag is only sRGB when the color space is sRGB.
+                if (cicp.ColorPrimaries != CicpColorPrimaries.Bt709 ||
+                    cicp.TransferCharacteristics != CicpTransferCharacteristics.Srgb)
                 {
-                    cicpColorSpace = cicp;
-
-                    // The EXIF color space tag is only sRGB when the color space is sRGB.
-                    if (cicp.ColorPrimaries != CicpColorPrimaries.Bt709 || 
-                        cicp.TransferCharacteristics != CicpTransferCharacteristics.Srgb)
-                    {
-                        exifColorSpace = ExifColorSpace.Uncalibrated;
-                    }
+                    exifColorSpace = ExifColorSpace.Uncalibrated;
                 }
             }
 
