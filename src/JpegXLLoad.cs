@@ -41,10 +41,9 @@ namespace JpegXLFileTypePlugin
                 float? contentMaxLuminanceNits = null;
 
                 CicpColorSpace? cicpColorSpace = decoderImage.CicpColorSpace;
-                bool isHdrTransfer = cicpColorSpace.HasValue
-                    && cicpColorSpace.Value.TransferCharacteristics
-                        is CicpTransferCharacteristics.SmpteSt2084PQ
-                        or CicpTransferCharacteristics.AribStdB67Hlg;
+                bool isHdrTransfer = cicpColorSpace.HasValue && cicpColorSpace.Value.TransferCharacteristics 
+                    is CicpTransferCharacteristics.SmpteSt2084PQ 
+                    or CicpTransferCharacteristics.AribStdB67Hlg;
 
                 if (isHdrTransfer)
                 {
