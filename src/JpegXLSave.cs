@@ -150,6 +150,9 @@ namespace JpegXLFileTypePlugin
                 or CicpColorPrimaries.Smpte432;
 
             bool transferExpressible = cicp.TransferCharacteristics is CicpTransferCharacteristics.Bt709
+                or CicpTransferCharacteristics.Bt601
+                or CicpTransferCharacteristics.Bt2020TenBit
+                or CicpTransferCharacteristics.Bt2020TwelveBit
                 or CicpTransferCharacteristics.Linear
                 or CicpTransferCharacteristics.Srgb
                 or CicpTransferCharacteristics.SmpteSt2084PQ

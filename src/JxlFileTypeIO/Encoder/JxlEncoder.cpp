@@ -64,6 +64,9 @@ namespace
         switch (static_cast<CicpTransferCharacteristics>(metadata->cicpTransferCharacteristics))
         {
         case CicpTransferCharacteristics::Bt709:
+        case CicpTransferCharacteristics::Bt601:
+        case CicpTransferCharacteristics::Bt2020TenBit:
+        case CicpTransferCharacteristics::Bt2020TwelveBit:
             colorEncoding.transfer_function = JXL_TRANSFER_FUNCTION_709;
             break;
         case CicpTransferCharacteristics::Linear:
