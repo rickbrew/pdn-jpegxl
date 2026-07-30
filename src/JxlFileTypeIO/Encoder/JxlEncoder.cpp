@@ -123,7 +123,7 @@ namespace
 
         // Don't auto-convert images with a color profile (ICC or CICP) to gray scale.
         // The image's profile is RGB, and RGB profiles should not be used with a gray scale image.
-        // Over in JpegXLSave we are careful only allow images with an sRGB color profile to be
+        // Over in JpegXLSave we are careful to only allow images with an sRGB color profile to be
         // converted to gray scale.
         if (isGray && !hasColorProfile)
         {
