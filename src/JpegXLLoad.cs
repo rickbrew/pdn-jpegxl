@@ -83,10 +83,19 @@ namespace JpegXLFileTypePlugin
                     cicpColorSpace.Value.CanCreateColorContext &&
                     factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
                 {
-                    // SDR CICP: the pixels are already in this color space, so just tag them with a matching
-                    // color context synthesized from the CICP code points.
+                    // SDR CICP + CanCreateColorContext: the pixels are already in this color space, so just tag them
+                    // with a matching color profile synthesized from the CICP code points.
                     documentColorContext = imagingFactory.CreateColorContext(cicpColorSpace.Value);
                     bitmapLayerSource = decoderLayerBitmap.CreateRef();
+                }
+                else if (cicpColorSpace.HasValue &&
+                    cicpColorSpace.Value.CanColorTransformFrom &&
+                    factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
+                {
+                    // SDR CICP + CanColorTransformFrom: the pixels need to be transformed to a color space that is ICC compatible.
+                    // This shouldn't happen in practice, but I'm including this for robustness.
+                    documentColorContext = imagingFactory.CreateColorContext(cicpColorSpace.Value.RecommendedColorSpace);
+                    bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer(cicpColorSpace.Value, documentColorContext, decoderLayerBitmap.PixelFormat);
                 }
                 else if (factory.SupportedPixelFormats.Contains(decoderLayerBitmap.PixelFormat))
                 {
@@ -97,7 +106,14 @@ namespace JpegXLFileTypePlugin
                 }
                 else
                 {
-                    throw new FormatException($"Unsupported format: {decoderImage.ColorSpace}, {decoderImage.ChannelRepresentation}");
+                    if (cicpColorSpace.HasValue)
+                    {
+                        throw new FormatException($"Unsupported format: {decoderImage.ColorSpace}, {decoderImage.ChannelRepresentation}, CICP: {cicpColorSpace.Value}");
+                    }
+                    else
+                    {
+                        throw new FormatException($"Unsupported format: {decoderImage.ColorSpace}, {decoderImage.ChannelRepresentation}");
+                    }
                 }
 
                 IFileTypeDocument document = factory.CreateDocument(bitmapLayerSource.Size, bitmapLayerSource.PixelFormat);
