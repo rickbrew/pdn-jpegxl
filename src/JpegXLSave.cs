@@ -68,7 +68,6 @@ namespace JpegXLFileTypePlugin
             byte[]? iccProfileBytes = null;
             byte[]? xmpBytes = null;
             CicpColorSpace? cicpColorSpace = null;
-
             ExifColorSpace exifColorSpace = ExifColorSpace.Srgb;
 
             using IColorContext colorContext = input.GetColorContext();
