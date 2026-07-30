@@ -63,8 +63,7 @@ namespace JpegXLFileTypePlugin
                     if (documentColorContext is null)
                     {
                         // If for some reason the color context can't be linearized (shouldn't be possible), fallback to scRGB.
-                        cicp = CicpColorSpaces.ScRgb;
-                        documentColorContext = imagingFactory.CreateColorContext(cicp);
+                        documentColorContext = imagingFactory.CreateColorContext(CicpColorSpaces.ScRgb);
                     }
 
                     bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer<ColorRgba128Float>(cicp, documentColorContext);
