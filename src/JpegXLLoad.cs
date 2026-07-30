@@ -59,7 +59,13 @@ namespace JpegXLFileTypePlugin
                     // appropriate working space (e.g. BT.2020 -> BT.2020 linear), and the document is flagged as
                     // HDR so Paint.NET tone-maps it when importing as or exporting to SDR.
                     using IColorContext recommendedColorContext = imagingFactory.CreateColorContext(cicp.RecommendedColorSpace);
-                    documentColorContext = imagingFactory.CreateLinearizedColorContextOrScRgb(recommendedColorContext);
+                    documentColorContext = imagingFactory.TryCreateLinearizedColorContext(recommendedColorContext);
+                    if (documentColorContext is null)
+                    {
+                        // If for some reason the color context can't be linearized (shouldn't be possible), fallback to scRGB.
+                        cicp = CicpColorSpaces.ScRgb;
+                        documentColorContext = imagingFactory.CreateColorContext(cicp);
+                    }
 
                     bitmapLayerSource = decoderLayerBitmap.CreateColorTransformer<ColorRgba128Float>(cicp, documentColorContext);
                     isHdrDocument = true;
