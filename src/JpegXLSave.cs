@@ -68,7 +68,7 @@ namespace JpegXLFileTypePlugin
             byte[]? iccProfileBytes = null;
             byte[]? xmpBytes = null;
             CicpColorSpace? cicpColorSpace = null;
-            ExifColorSpace exifColorSpace = ExifColorSpace.Srgb;
+            ExifColorSpace exifColorSpace;
 
             using IColorContext colorContext = input.GetColorContext();
 
@@ -80,19 +80,12 @@ namespace JpegXLFileTypePlugin
             // (PQ/HLG transfers, non-identity matrix, narrow range), which a profile's embedded cicp tag
             // could otherwise carry through the exact match.
             if (colorContext.TryGetCicpColorSpaceExact(out CicpColorSpace cicp) &&
+                cicp != CicpColorSpaces.Srgb &&
                 cicp.CanCreateColorContext &&
                 IsNativeExpressible(cicp))
             {
-                // sRGB is left unset: the encoder signals it with its built-in color space encoding (the
-                // default for images without a color profile), which also keeps grayscale content encoded
-                // as gray -- the CICP path always writes RGB.
-                if (cicp != CicpColorSpaces.Srgb)
-                {
-                    cicpColorSpace = cicp;
-
-                    // The EXIF color space tag is only sRGB when the color space is sRGB.
-                    exifColorSpace = ExifColorSpace.Uncalibrated;
-                }
+                cicpColorSpace = cicp;
+                exifColorSpace = ExifColorSpace.Uncalibrated;
             }
             else if (colorContext.Type != ColorContextType.ExifColorSpace ||
                 colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
@@ -101,11 +94,11 @@ namespace JpegXLFileTypePlugin
                 // using its built-in color space encoding, and sRGB is the default for
                 // images without an ICC profile.
                 iccProfileBytes = colorContext.GetProfileBytes().ToArray();
-
-                if (iccProfileBytes.Length > 0)
-                {
-                    exifColorSpace = ExifColorSpace.Uncalibrated;
-                }
+                exifColorSpace = (iccProfileBytes.Length > 0) ? ExifColorSpace.Uncalibrated : ExifColorSpace.Srgb;
+            }
+            else
+            {
+                exifColorSpace = ExifColorSpace.Srgb;
             }
 
             Dictionary<ExifPropertyPath, ExifValue>? propertyItems = GetExifMetadataFromDocument(input);
