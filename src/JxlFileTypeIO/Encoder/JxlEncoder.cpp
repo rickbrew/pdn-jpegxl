@@ -31,9 +31,10 @@ namespace
     };
 
     // Builds an enumerated JxlColorEncoding from CICP code points (ITU-T H.273). Returns false if the primaries
-    // or transfer characteristics have no JPEG XL equivalent, in which case the caller falls back to an ICC
-    // profile or sRGB. JPEG XL decodes to full-range RGB, so the CICP matrix coefficients and video full range
-    // flag are implied and not consulted here.
+    // or transfer characteristics have no JPEG XL equivalent; the caller treats that as an error, because the
+    // managed IsNativeExpressible only sends expressible code points and no ICC fallback accompanies CICP.
+    // JPEG XL decodes to full-range RGB, so the CICP matrix coefficients and video full range flag are implied
+    // and not consulted here.
     bool BuildColorEncodingFromCicp(const EncoderImageMetadata* metadata, JxlColorEncoding& colorEncoding)
     {
         colorEncoding.color_space = JXL_COLOR_SPACE_RGB;
@@ -88,7 +89,7 @@ namespace
         return true;
     }
 
-    OutputPixelFormat GetOutputPixelFormat(const BitmapData* bitmap, bool hasICCProfile)
+    OutputPixelFormat GetOutputPixelFormat(const BitmapData* bitmap, bool hasColorProfile)
     {
         bool isGray = true;
         bool hasTransparency = false;
@@ -120,9 +121,11 @@ namespace
 
         OutputPixelFormat format;
 
-        // Don't auto-convert images with an ICC profile to gray scale.
+        // Don't auto-convert images with a color profile (ICC or CICP) to gray scale.
         // The image's profile is RGB, and RGB profiles should not be used with a gray scale image.
-        if (isGray && !hasICCProfile)
+        // Over in JpegXLSave we are careful only allow images with an sRGB color profile to be
+        // converted to gray scale.
+        if (isGray && !hasColorProfile)
         {
             format = hasTransparency ? OutputPixelFormat::GrayAlpha : OutputPixelFormat::Gray;
         }
@@ -222,7 +225,9 @@ EncoderStatus EncoderWriteImage(
             return EncoderStatus::UserCanceled;
         }
 
-        const OutputPixelFormat outputPixelFormat = GetOutputPixelFormat(bitmap, metadata->iccProfileSize > 0);
+        const OutputPixelFormat outputPixelFormat = GetOutputPixelFormat(
+            bitmap,
+            metadata->iccProfileSize > 0 || metadata->hasCicpColorInfo);
 
         if (!ReportProgress(progressCallback, 5))
         {
@@ -314,8 +319,15 @@ EncoderStatus EncoderWriteImage(
         }
 
         JxlColorEncoding cicpColorEncoding{};
-        if (metadata->hasCicpColorInfo && BuildColorEncodingFromCicp(metadata, cicpColorEncoding))
+        if (metadata->hasCicpColorInfo)
         {
+            if (!BuildColorEncodingFromCicp(metadata, cicpColorEncoding))
+            {
+                // Failing loudly beats silently tagging the image as sRGB.
+                SetErrorMessage(errorInfo, "BuildColorEncodingFromCicp failed.");
+                return EncoderStatus::EncodeError;
+            }
+
             if (JxlEncoderSetColorEncoding(enc.get(), &cicpColorEncoding) != JXL_ENC_SUCCESS)
             {
                 SetErrorMessage(errorInfo, "JxlEncoderSetColorEncoding failed.");

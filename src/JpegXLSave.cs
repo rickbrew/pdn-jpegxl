@@ -84,30 +84,28 @@ namespace JpegXLFileTypePlugin
                 cicp.CanCreateColorContext &&
                 IsNativeExpressible(cicp))
             {
-                cicpColorSpace = cicp;
-
-                // The EXIF color space tag is only sRGB when the color space is sRGB.
-                if (cicp.ColorPrimaries != CicpColorPrimaries.Bt709 ||
-                    cicp.TransferCharacteristics != CicpTransferCharacteristics.Srgb)
+                // sRGB is left unset: the encoder signals it with its built-in color space encoding (the
+                // default for images without a color profile), which also keeps grayscale content encoded
+                // as gray -- the CICP path always writes RGB.
+                if (cicp != CicpColorSpaces.Srgb)
                 {
+                    cicpColorSpace = cicp;
+
+                    // The EXIF color space tag is only sRGB when the color space is sRGB.
                     exifColorSpace = ExifColorSpace.Uncalibrated;
                 }
             }
-
-            if (cicpColorSpace is null)
+            else if (colorContext.Type != ColorContextType.ExifColorSpace ||
+                colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
             {
                 // We do not set an ICC profile for sRGB images as JpegXL can signal that
                 // using its built-in color space encoding, and sRGB is the default for
                 // images without an ICC profile.
-                if (colorContext.Type != ColorContextType.ExifColorSpace || 
-                    colorContext.ExifColorSpace != PaintDotNet.Imaging.ExifColorSpace.Srgb)
-                {
-                    iccProfileBytes = colorContext.GetProfileBytes().ToArray();
+                iccProfileBytes = colorContext.GetProfileBytes().ToArray();
 
-                    if (iccProfileBytes.Length > 0)
-                    {
-                        exifColorSpace = ExifColorSpace.Uncalibrated;
-                    }
+                if (iccProfileBytes.Length > 0)
+                {
+                    exifColorSpace = ExifColorSpace.Uncalibrated;
                 }
             }
 
