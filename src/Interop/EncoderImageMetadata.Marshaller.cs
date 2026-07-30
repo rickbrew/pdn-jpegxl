@@ -50,26 +50,9 @@ namespace JpegXLFileTypePlugin.Interop
 
                 try
                 {
-                    if (managed.iccProfile.Length > 0)
-                    {
-                        native.iccProfile = NativeMemory.Alloc((uint)managed.iccProfile.Length);
-                        managed.iccProfile.Span.CopyTo(new Span<byte>((byte*)native.iccProfile, managed.iccProfile.Length));
-                        native.iccProfileSize = (uint)managed.iccProfile.Length;
-                    }
-
-                    if (managed.exif.Length > 0)
-                    {
-                        native.exif = NativeMemory.Alloc((uint)managed.exif.Length);
-                        managed.exif.Span.CopyTo(new Span<byte>((byte*)native.exif, managed.exif.Length));
-                        native.exifSize = (uint)managed.exif.Length;
-                    }
-
-                    if (managed.xmp.Length > 0)
-                    {
-                        native.xmp = NativeMemory.Alloc((uint)managed.xmp.Length);
-                        managed.xmp.Span.CopyTo(new Span<byte>((byte*)native.xmp, managed.xmp.Length));
-                        native.xmpSize = (uint)managed.xmp.Length;
-                    }
+                    native.iccProfile = AllocAndCopy(managed.iccProfile, out native.iccProfileSize);
+                    native.exif = AllocAndCopy(managed.exif, out native.exifSize);
+                    native.xmp = AllocAndCopy(managed.xmp, out native.xmpSize);
                 }
                 catch (Exception)
                 {
@@ -80,6 +63,20 @@ namespace JpegXLFileTypePlugin.Interop
                 }
 
                 return native;
+            }
+
+            private static void* AllocAndCopy(ReadOnlyMemory<byte> data, out nuint size)
+            {
+                if (data.Length == 0)
+                {
+                    size = 0;
+                    return null;
+                }
+
+                void* block = NativeMemory.Alloc((uint)data.Length);
+                data.Span.CopyTo(new Span<byte>((byte*)block, data.Length));
+                size = (uint)data.Length;
+                return block;
             }
 
             public static void Free(Native native)
