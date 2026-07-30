@@ -142,12 +142,14 @@ namespace JpegXLFileTypePlugin
         // BuildColorEncodingFromCicp in the native JxlEncoder.
         private static bool IsNativeExpressible(CicpColorSpace cicp)
         {
-            bool primariesExpressible = cicp.ColorPrimaries is CicpColorPrimaries.Bt709
+            bool primariesExpressible = cicp.ColorPrimaries 
+                is CicpColorPrimaries.Bt709
                 or CicpColorPrimaries.Bt2020
                 or CicpColorPrimaries.Smpte431
                 or CicpColorPrimaries.Smpte432;
 
-            bool transferExpressible = cicp.TransferCharacteristics is CicpTransferCharacteristics.Bt709
+            bool transferExpressible = cicp.TransferCharacteristics 
+                is CicpTransferCharacteristics.Bt709
                 or CicpTransferCharacteristics.Bt601
                 or CicpTransferCharacteristics.Bt2020TenBit
                 or CicpTransferCharacteristics.Bt2020TwelveBit
