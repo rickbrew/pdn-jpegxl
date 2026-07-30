@@ -378,9 +378,6 @@ namespace
                     return DecoderStatus::DecodeError;
                 }
 
-                char* layerNamePtr = nullptr;
-                uint32_t layerNameLengthInBytes = 0;
-
                 if (frameHeader.name_length > 0)
                 {
                     layerNameBuffer.resize(static_cast<size_t>(frameHeader.name_length) + 1);
