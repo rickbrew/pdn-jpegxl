@@ -189,6 +189,16 @@ namespace JpegXLFileTypePlugin.Interop
                     return SetCicpColorInfoResult.Unsupported;
                 }
 
+                if (ChannelRepresentation == JpegXLImageChannelRepresentation.Uint8 &&
+                    cicp.TransferCharacteristics
+                        is CicpTransferCharacteristics.SmpteSt2084PQ
+                        or CicpTransferCharacteristics.AribStdB67Hlg)
+                {
+                    // 8-bit HDR is not supported as an HDR document. Have the native decoder send the
+                    // ICC profile instead, so the image loads as SDR.
+                    return SetCicpColorInfoResult.Unsupported;
+                }
+
                 CicpColorSpace = cicp;
                 IntensityTargetNits = intensityTargetNits;
             }
