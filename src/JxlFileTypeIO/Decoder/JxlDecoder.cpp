@@ -762,10 +762,13 @@ namespace
 
                 JxlColorEncoding colorEncoding{};
 
-                if (JxlDecoderGetColorAsEncodedProfile(
-                    context.GetDecoder(),
-                    JXL_COLOR_PROFILE_TARGET_DATA,
-                    &colorEncoding) == JXL_DEC_SUCCESS)
+                // CMYK images are only ever described by an ICC profile; a CMYK image with an enumerated
+                // color encoding is malformed, so it falls through to the ICC path below.
+                if (decoderImageFormat != DecoderImageFormat::Cmyk &&
+                    JxlDecoderGetColorAsEncodedProfile(
+                        context.GetDecoder(),
+                        JXL_COLOR_PROFILE_TARGET_DATA,
+                        &colorEncoding) == JXL_DEC_SUCCESS)
                 {
                     encodedProfileStatus = SetProfileFromColorEncoding(callbacks, colorEncoding, context.GetBasicInfo().intensity_target);
 
