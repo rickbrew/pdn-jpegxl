@@ -138,8 +138,8 @@ namespace JpegXLFileTypePlugin
             return new EncoderImageMetadata(exifBytes, iccProfileBytes, xmpBytes, cicpColorSpace);
         }
 
-        // Whether the native encoder can build a JxlColorEncoding for this CICP color space. Kept in sync with
-        // BuildColorEncodingFromCicp in the native JxlEncoder.
+        // Whether the native encoder can build a JxlColorEncoding for this CICP color space.
+        // Kept in sync with BuildColorEncodingFromCicp in the native JxlEncoder.
         private static bool IsNativeExpressible(CicpColorSpace cicp)
         {
             bool primariesExpressible = cicp.ColorPrimaries 

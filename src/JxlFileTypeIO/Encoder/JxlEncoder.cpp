@@ -35,6 +35,7 @@ namespace
     // managed IsNativeExpressible only sends expressible code points and no ICC fallback accompanies CICP.
     // JPEG XL decodes to full-range RGB, so the CICP matrix coefficients and video full range flag are implied
     // and not consulted here.
+    // The IsNativeExpressible method in JpegXLSave is kept synchronized with this method.
     bool BuildColorEncodingFromCicp(const EncoderImageMetadata* metadata, JxlColorEncoding& colorEncoding)
     {
         colorEncoding.color_space = JXL_COLOR_SPACE_RGB;
